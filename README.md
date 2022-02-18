@@ -3,6 +3,8 @@ CIT PortalのPythonラッパーを作りたい(願望)
 
 とりあえず掲示板の情報をダウンロードできます。
 
+PRくれると嬉しいです。
+
 
 ## Installation
 GitHubからpipでインストールできます。
