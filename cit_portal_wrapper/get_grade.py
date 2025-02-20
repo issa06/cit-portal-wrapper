@@ -2,7 +2,7 @@
 
 from bs4 import BeautifulSoup
 import json
-import cit_portal_wrapper.portal_wrapper as portal_wrapper
+from . import portal_wrapper
 
 
 class Gradeboard:
@@ -152,9 +152,19 @@ class Gradeboard:
                 if grade == "BREAK":
                     break
                 if grade is not None:
-                    grade["year"] = year
-                    grade["semester"] = semester
-                    grades.append(grade)
+                    final_grade = {
+                        "year": year,
+                        "semester": semester,
+                        "course_category": grade.get("course_category"),
+                        "classification": grade.get("classification"),
+                        "requirement": grade.get("requirement"),
+                        "subject": grade.get("subject"),
+                        "credits": grade.get("credits"),
+                        "evaluation": grade.get("evaluation"),
+                        "gpa_target": grade.get("gpa_target"),
+                        "teacher": grade.get("teacher"),
+                    }
+                    grades.append(final_grade)
 
         if not grades:
             with open("debug_grade_page.html", "w", encoding="utf-8") as f:
