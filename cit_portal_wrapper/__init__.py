@@ -4,6 +4,7 @@
 from .portal_wrapper import *
 from .get_grade import *
 from .get_attendance import *
+from .get_studentinfo import *
 
 __copyright__    = 'Copyright (C) 2022 kairi'
 __version__      = '0.1.0'
