@@ -97,9 +97,9 @@ class InfoPage:
 def get_info_json(user_id, password):
     top_page = portal_wrapper.TopPage(user_id, password)
     info_page = InfoPage(top_page)
-    basic_info = info_page.parse_panels()
+    student_info = (info_page.parse_panels())
 
     with open("basic_info.json", "w", encoding="utf-8") as f:
-        json.dump(basic_info, f, ensure_ascii=False, indent=4)
+        json.dump(student_info, f, ensure_ascii=False, indent=4)
 
-    return basic_info
+    return student_info
