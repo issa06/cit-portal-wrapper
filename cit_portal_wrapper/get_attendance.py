@@ -90,4 +90,5 @@ def get_attendance_json(user_id: str, password: str):
     )
     with open("attendance_data.json", "w", encoding="utf-8") as f:
         json.dump(attendance_data, f, ensure_ascii=False, indent=4)
+
     return attendance_data
