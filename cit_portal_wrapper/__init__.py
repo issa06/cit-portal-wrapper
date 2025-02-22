@@ -7,7 +7,7 @@ from .get_attendance import *
 from .get_studentinfo import *
 
 __copyright__    = 'Copyright (C) 2022 kairi'
-__version__      = '0.1.0'
+__version__      = '0.2.0'
 __license__      = 'MIT'
 __author__       = 'kairi'
 __author_email__ = 'kairi.satellite@gmail.com'
