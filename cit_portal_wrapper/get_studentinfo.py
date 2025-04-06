@@ -2,8 +2,9 @@
 
 from bs4 import BeautifulSoup
 import json
+import re
+import base64
 from . import portal_wrapper
-
 
 class InfoPage:
     def __init__(self, top_page: portal_wrapper.TopPage):
@@ -93,11 +94,34 @@ class InfoPage:
                 panels[title] = self.parse_datatable(panel_div)
         return panels
 
+    def get_student_image(self, filename_base="student_photo"):
+        panels = self.parse_panels()
+        for data in panels.values():
+            if isinstance(data, dict) and "顔写真" in data:
+                image_data = data["顔写真"]
+                if isinstance(image_data, list):
+                    image_data = image_data[0]
+                match = re.match(r"data:image/([^;]+);base64,(.+)", image_data)
+                if not match:
+                    raise ValueError("base64形式の画像データではありません")
+                ext = match.group(1)  # extention check
+                b64_data = match.group(2)
+                filename = f"{filename_base}.{ext}"
+                with open(filename, "wb") as f:
+                    f.write(base64.b64decode(b64_data))
+                return filename
+        return None
+
 
 def get_info_json(user_id, password):
     top_page = portal_wrapper.TopPage(user_id, password)
     info_page = InfoPage(top_page)
-    student_info = (info_page.parse_panels())
+    student_info = info_page.parse_panels()
+    filename = info_page.get_student_image()
+    if filename:
+        print(f"Save student image: {filename}")
+    else:
+        print("Could not find student image")
 
     with open("basic_info.json", "w", encoding="utf-8") as f:
         json.dump(student_info, f, ensure_ascii=False, indent=4)
