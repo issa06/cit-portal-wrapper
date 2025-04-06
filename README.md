@@ -23,7 +23,7 @@ import cit_portal_wrapper
 # 掲示板情報の取得:
 cit_portal_wrapper.get_noticeboard_json(user_id, password, full=False)
 
-成績情報の取得:
+# 成績情報の取得:
 cit_portal_wrapper.get_grade_json(user_id, password)
 ```
 
