@@ -6,6 +6,7 @@ import re
 import base64
 from . import portal_wrapper
 
+
 class InfoPage:
     def __init__(self, top_page: portal_wrapper.TopPage):
         self.ses = top_page.ses
