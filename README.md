@@ -24,7 +24,7 @@ import cit_portal_wrapper
 cit_portal_wrapper.get_noticeboard_json(user_id, password, full=False)
 
 # 成績情報の取得:
-cit_portal_wrapper.get_grade_json(user_id, password)
+cit_portal_wrapper.get_grades_json(user_id, password)
 ```
 
 成績の取得例:

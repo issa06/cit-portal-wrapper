@@ -1,8 +1,18 @@
 # Author: issa06
 
-from bs4 import BeautifulSoup
 import json
+import unicodedata
+
+from bs4 import BeautifulSoup
+
 from . import portal_wrapper
+
+
+def normalize_text(text: str) -> str:
+    # 全角を半角に変換する関数
+    text = text.replace("　", " ")
+    text = unicodedata.normalize("NFKC", text)
+    return text
 
 
 class Gradeboard:
@@ -16,7 +26,8 @@ class Gradeboard:
             t.get("name"): t.get("value", "")
             for t in self.func_form.select('input[type="hidden"]')
         }
-        self.rx_data = {k: v for k, v in self.func_data.items() if k.startswith("rx-")}
+        self.rx_data = {k: v for k, v in self.func_data.items()
+                        if k.startswith("rx-")}
 
     def load(self):
         menu_form = self.top_page.soup.select_one("form#menuForm")
@@ -56,7 +67,8 @@ class Gradeboard:
         year_elem = self.soup.select_one(year_id)
         semester_elem = self.soup.select_one(semester_id)
         year = year_elem.get_text(strip=True) if year_elem else "不明"
-        semester = semester_elem.get_text(strip=True) if semester_elem else "不明"
+        semester = semester_elem.get_text(
+            strip=True) if semester_elem else "不明"
 
         grades_div = self.soup.select_one(div_id)
         if not grades_div:
@@ -88,7 +100,8 @@ class Gradeboard:
             elif text_val == "【選択】":
                 markers["requirement"] = False
             else:
-                markers["requirement"] = text_val
+                # その他の値の場合はNoneを設定
+                markers["requirement"] = None
             return True
 
         return False
@@ -99,23 +112,25 @@ class Gradeboard:
         if len(cells) < 7:
             return None
 
-        subject = cells[1].get_text(strip=True)
+        subject = normalize_text(cells[1].get_text(strip=True))
         if subject == "総単位":
             return None
         if any(keyword in subject for keyword in skip_keywords):
             return "BREAK"
 
-        credits = cells[2].get_text(strip=True)
-        evaluation = cells[3].get_text(strip=True)
-        gpa_target_text = cells[4].get_text(strip=True)
-        gpa_target = True if gpa_target_text == "○" else gpa_target_text
-        # 出席率の取得は将来実装された時のためにコメントアウト
-        # attendance = cells[5].get_text(strip=True)
-        teacher = cells[6].get_text(strip=True)
+        credits = normalize_text(cells[2].get_text(strip=True))
+        evaluation = normalize_text(cells[3].get_text(strip=True))
+        gpa_target_text = normalize_text(cells[4].get_text(strip=True))
+        gpa_target = True if gpa_target_text == "○" else False
+        teacher = normalize_text(cells[6].get_text(strip=True))
+
+        # 空の値を持つエントリを除外
+        if not all([subject, credits, evaluation, teacher]):
+            return None
 
         grade = {
-            "course_category": markers.get("course_category"),
-            "classification": markers.get("classification"),
+            "course_category": normalize_text(markers.get("course_category")),
+            "classification": normalize_text(markers.get("classification")),
             "requirement": markers.get("requirement"),
             "subject": subject,
             "credits": credits,

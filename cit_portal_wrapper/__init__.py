@@ -8,8 +8,8 @@ from .get_studentinfo import *
 from .get_timetable import *
 
 __copyright__    = 'Copyright (C) 2022 kairi'
-__version__      = '0.2.0'
+__version__      = '0.3.0'
 __license__      = 'MIT'
-__author__       = 'kairi'
-__author_email__ = 'kairi.satellite@gmail.com'
-__url__          = 'https://github.com/kairi003/cit-portal-wrapper'
+__author__       = '14kw13'
+__author_email__ = 'aiai@14kw13.com'
+__url__          = 'https://github.com/issa06/cit-portal-wrapper'
