@@ -125,7 +125,7 @@ class Gradeboard:
         teacher = normalize_text(cells[6].get_text(strip=True))
 
         # 空の値を持つエントリを除外
-        if not all([subject, credits, evaluation, teacher]):
+        if not all([subject, credits, teacher]):
             return None
 
         grade = {
@@ -134,7 +134,7 @@ class Gradeboard:
             "requirement": markers.get("requirement"),
             "subject": subject,
             "credits": credits,
-            "evaluation": evaluation,
+            "evaluation": evaluation if evaluation else "履修中",
             "gpa_target": gpa_target,
             "teacher": teacher,
         }
