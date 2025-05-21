@@ -31,7 +31,7 @@ class TopPage:
         }
         url = "https://portal.it-chiba.ac.jp/uprx/up/pk/pky001/Pky00101.xhtml"
         response = self.ses.post(url, login_form)
-        soup = BeautifulSoup(response.content, "lxml")
+        soup = BeautifulSoup(response.content, "xml")
         if not soup.select_one("form#menuForm"):
             raise LoginError("ログイン失敗")
         return soup

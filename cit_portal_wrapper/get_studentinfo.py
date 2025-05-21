@@ -30,7 +30,7 @@ class InfoPage:
         )
         url = "https://portal.it-chiba.ac.jp/uprx/up/bs/bsa001/Bsa00101.xhtml"
         response = self.ses.post(url, data=data)
-        soup = BeautifulSoup(response.content, "lxml")
+        soup = BeautifulSoup(response.content, "xml")
         return soup
 
     def parse_inner_table(self, panel_div):

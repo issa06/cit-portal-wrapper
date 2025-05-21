@@ -33,7 +33,7 @@ class Noticeboard:
         response = self.ses.post(
             "https://portal.it-chiba.ac.jp/uprx/up/bs/bsa001/Bsa00101.xhtml", data
         )
-        soup = BeautifulSoup(response.content, "lxml")
+        soup = BeautifulSoup(response.content, "xml")
         return soup
 
     def func_post(self, data):
