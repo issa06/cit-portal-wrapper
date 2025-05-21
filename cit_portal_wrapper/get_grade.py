@@ -192,12 +192,12 @@ class Gradeboard:
         return grades
 
 
-def get_grades_json(user_id, password):
+def get_grades_json(user_id, password, filename="grades.json"):
     top_page = portal_wrapper.TopPage(user_id, password)
     gradeboard = Gradeboard(top_page)
     grades = list(gradeboard.get_grades())
 
-    with open("grades.json", "w", encoding="utf-8") as f:
+    with open(filename, "w", encoding="utf-8") as f:
         json.dump(grades, f, ensure_ascii=False, indent=4)
 
     return grades
