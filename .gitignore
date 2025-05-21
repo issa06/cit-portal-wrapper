@@ -130,3 +130,4 @@ dmypy.json
 
 # test directory
 testdir
+grades.json
