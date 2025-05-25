@@ -95,7 +95,7 @@ class InfoPage:
                 panels[title] = self.parse_datatable(panel_div)
         return panels
 
-    def get_student_image(self, filename_base="student_photo"):
+    def get_student_image(self, default_filename="student_photo"):
         panels = self.parse_panels()
         for data in panels.values():
             if isinstance(data, dict) and "顔写真" in data:
@@ -107,7 +107,7 @@ class InfoPage:
                     raise ValueError("base64形式の画像データではありません")
                 ext = match.group(1)  # extention check
                 b64_data = match.group(2)
-                filename = f"{filename_base}.{ext}"
+                filename = f"{default_filename}.{ext}"
                 with open(filename, "wb") as f:
                     f.write(base64.b64decode(b64_data))
                 return filename
