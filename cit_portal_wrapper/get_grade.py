@@ -124,8 +124,8 @@ class Gradeboard:
         gpa_target = True if gpa_target_text == "○" else False
         teacher = normalize_text(cells[6].get_text(strip=True))
 
-        # 空の値を持つエントリを除外
-        if not all([subject, credits, teacher]):
+        # 科目名がある場合は成績として処理（単位や教員名が空でも許可）
+        if not subject:
             return None
 
         grade = {
