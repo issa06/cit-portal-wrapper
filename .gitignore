@@ -132,3 +132,5 @@ dmypy.json
 testdir
 
 *.json
+
+test_*
