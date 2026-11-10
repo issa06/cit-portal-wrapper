@@ -11,8 +11,9 @@ from pydantic import Field
 from . import __version__
 from .documents import DocumentsClient
 from .manaba import ManabaClient
-from .models import PortalPage
+from .models import NoticeDetail, NoticeDownload, PortalPage
 from .portal import PortalClient, get_attendance, get_grades, get_notices, get_student_info, get_timetable
+from .portal.notices import fetch_notice
 from .tooling import safe_tool, safe_tool_errors
 
 mcp = MCPServer(
@@ -26,6 +27,7 @@ mcp = MCPServer(
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True)
 Limit = Annotated[int, Field(ge=1, le=200)]
 Offset = Annotated[int, Field(ge=0)]
+NoticeRef = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 def _dataset(kind: str, full: bool = False, refresh: bool = False) -> dict:
@@ -143,6 +145,37 @@ def portal_status() -> dict[str, object]:
 def portal_get_notices(full: bool = False) -> list[dict[str, object]]:
     """Get read-only notices from CIT Portal."""
     return _dataset("notices", full)["items"]
+
+
+@mcp.tool(annotations=READ_ONLY)
+@safe_tool
+def portal_get_notice(notice_ref: NoticeRef, full: bool = False) -> NoticeDetail:
+    """Get body, sender and attachment references for an ALREADY READ notice only.
+
+    Use notice_ref from portal_query/notices or portal_get_notices; use the same full flag.
+    Unread/unknown records are blocked BEFORE detail selection. Returned read-state preservation
+    is checked against independently reloaded list snapshots. No mark-read/unread/receipt is sent.
+    Unread notices have no verified non-marking route and return READ_STATE_CHANGE_REQUIRED.
+    """
+    return fetch_notice(_portal(), notice_ref, full=full)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+    )
+)
+@safe_tool
+def portal_get_notice_attachment(
+    notice_ref: NoticeRef, attachment_ref: NoticeRef, full: bool = False
+) -> NoticeDownload:
+    """Download one attachment of an ALREADY READ notice to a private local file (max 8MiB).
+
+    Obtain references from portal_get_notice. Never takes arbitrary URLs or server component IDs.
+    Checks read state before selection and again in an independent view before writing a 0600 file.
+    Returns metadata and a local path; file bytes, credentials and download tokens are not emitted.
+    """
+    return fetch_notice(_portal(), notice_ref, full=full, attachment_ref=attachment_ref)
 
 
 @mcp.tool(annotations=READ_ONLY)

@@ -12,6 +12,7 @@ import requests
 
 from cit_campus_mcp import server
 from cit_campus_mcp.errors import AuthenticationError
+from cit_campus_mcp.models import NoticeAttachment, NoticeDetail, NoticeDownload
 
 
 def dataset(*args, **kwargs):
@@ -32,7 +33,33 @@ def status():
     return {"authenticated": True, "restored_session": True, "menu_form": True}
 
 
+def notice(client, notice_ref, *, full=False, attachment_ref=None):
+    if attachment_ref:
+        return NoticeDownload(
+            notice_ref=notice_ref,
+            attachment_ref=attachment_ref,
+            name="synthetic.pdf",
+            file_path="/synthetic/private/file.pdf",
+            content_type="application/pdf",
+            size_bytes=10,
+            sha256="c" * 64,
+            fetched_at="2026-11-10T00:00:00+00:00",
+        )
+    return NoticeDetail(
+        notice_ref=notice_ref,
+        title="Synthetic",
+        date=None,
+        category=None,
+        sender="Synthetic office",
+        body="Synthetic only",
+        attachments=[NoticeAttachment(attachment_ref="b" * 64, name="synthetic.pdf", download_supported=True)],
+        fetched_at="2026-11-10T00:00:00+00:00",
+        source="https://portal.chibatech.ac.jp/",
+    )
+
+
 server._dataset = dataset
+server.fetch_notice = notice
 server._portal = lambda: SimpleNamespace(status=status, run=lambda *args, **kwargs: {"Synthetic": "Only"})
 server._manaba = lambda: SimpleNamespace(
     list_courses=lambda: [{"course_id": "1", "name": "Test", "url": "https://cit.manaba.jp/ct/course_1"}],

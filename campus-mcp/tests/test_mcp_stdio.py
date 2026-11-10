@@ -12,6 +12,8 @@ ARGUMENTS = {
     "portal_status": {},
     "portal_query": {"kind": "notices"},
     "portal_get_notices": {},
+    "portal_get_notice": {"notice_ref": "a" * 64},
+    "portal_get_notice_attachment": {"notice_ref": "a" * 64, "attachment_ref": "b" * 64},
     "portal_get_grades": {},
     "portal_get_attendance": {},
     "portal_get_timetable": {},
@@ -41,7 +43,7 @@ def test_stdio_initialize_list_and_every_tool(tmp_path):
                     assert {t.name for t in tools} == set(ARGUMENTS)
                     for tool in tools:
                         assert tool.description and tool.input_schema and tool.output_schema
-                        assert tool.annotations.read_only_hint
+                        assert tool.annotations.read_only_hint == (tool.name != "portal_get_notice_attachment")
                         jsonschema.validate(ARGUMENTS[tool.name], tool.input_schema)
                         result = await client.call_tool(tool.name, ARGUMENTS[tool.name])
                         assert not result.is_error

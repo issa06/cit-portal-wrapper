@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from ..errors import DataUnavailable, ResponseTooLarge, StructureChanged
 from ..webforms import portal_page
 from .client import PortalTopPage
+from .notices import notice_read_state, notice_reference
 
 
 def normalize_text(text: str | None) -> str | None:
@@ -28,6 +29,19 @@ def _form_state(soup: BeautifulSoup) -> tuple[dict[str, str], dict[str, str]]:
 
 
 def get_notices(top: PortalTopPage, full: bool = False) -> list[dict[str, Any]]:
+    notices = []
+    seen = set()
+    for soup in iter_notice_pages(top, full):
+        for row in parse_notices(soup):
+            identity = (row["date"], row["category"], row["title"])
+            if identity not in seen:
+                seen.add(identity)
+                notices.append(row)
+    return notices
+
+
+def iter_notice_pages(top: PortalTopPage, full: bool = False):
+    """Yield live pages so selection never uses a component ID from a stale page."""
     soup = top.menu_post("0_3_0_0")
     if full:
         # Full-board navigation differs by deployment. Keep the safe summary page if controls are absent.
@@ -51,7 +65,6 @@ def get_notices(top: PortalTopPage, full: bool = False) -> list[dict[str, Any]]:
             )
             soup = portal_page(response)
 
-    notices = []
     seen = set()
     page_signatures = set()
     for page in range(20):
@@ -64,14 +77,14 @@ def get_notices(top: PortalTopPage, full: bool = False) -> list[dict[str, Any]]:
             identity = (row["date"], row["category"], row["title"])
             if identity not in seen:
                 seen.add(identity)
-                notices.append(row)
-        if len(notices) > 2000:
+        if len(seen) > 2000:
             raise ResponseTooLarge("Notice traversal limit reached.")
+        yield soup
         next_button = soup.select_one(
             '.ui-paginator-next:not(.ui-state-disabled), button[title="次へ"]:not([disabled])'
         )
         if not full or next_button is None:
-            return notices
+            return
         data, _ = _form_state(soup)
         source = next_button.get("id") or next_button.get("name")
         if not source:
@@ -125,21 +138,20 @@ def parse_notices(soup: BeautifulSoup) -> list[dict[str, Any]]:
         except ValueError:
             parsed_date = raw_date or None
         category_tag = item.select_one("span.keijiCategory")
-        notices.append(
-            {
-                "important": ("hiddenStyle" not in item.select_one("i.fa-exclamation-circle").get("class", []))
-                if item.select_one("i.fa-exclamation-circle")
-                else None,
-                "unread_or_highlighted": (
-                    "hiddenStyle" not in item.select_one("i.fa-lightbulb-circle").get("class", [])
-                )
-                if item.select_one("i.fa-lightbulb-circle")
-                else None,
-                "category": normalize_text(category_tag.get_text(strip=True)) if category_tag else None,
-                "title": normalize_text(title_tag.get_text(strip=True)),
-                "date": parsed_date,
-            }
-        )
+        record = {
+            "important": ("hiddenStyle" not in item.select_one("i.fa-exclamation-circle").get("class", []))
+            if item.select_one("i.fa-exclamation-circle")
+            else None,
+            "unread_or_highlighted": ("hiddenStyle" not in item.select_one("i.fa-lightbulb-circle").get("class", []))
+            if item.select_one("i.fa-lightbulb-circle")
+            else None,
+            "category": normalize_text(category_tag.get_text(strip=True)) if category_tag else None,
+            "title": normalize_text(title_tag.get_text(strip=True)),
+            "date": parsed_date,
+            "read_state": notice_read_state(title_tag),
+        }
+        record["notice_ref"] = notice_reference(record, str(title_tag.get("id", "")))
+        notices.append(record)
     return notices
 
 

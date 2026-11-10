@@ -55,6 +55,26 @@ class ResponseTooLarge(PortalError):
     code = "RESPONSE_TOO_LARGE"
 
 
+class ReadStateChangeRequired(PortalError):
+    code = "READ_STATE_CHANGE_REQUIRED"
+
+
+class ReadStateUnknown(PortalError):
+    code = "READ_STATE_UNKNOWN"
+
+
+class ReadStateVerificationFailed(PortalError):
+    code = "READ_STATE_VERIFICATION_FAILED"
+
+
+class NoticeNotFound(PortalError):
+    code = "NOTICE_NOT_FOUND"
+
+
+class NoticeAmbiguous(PortalError):
+    code = "NOTICE_AMBIGUOUS"
+
+
 def public_error(exc: Exception) -> dict[str, object]:
     if isinstance(exc, PortalError):
         code, retryable = exc.code, exc.retryable
