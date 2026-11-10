@@ -18,6 +18,10 @@ class MFARequired(AuthenticationError):
     code = "MFA_REQUIRED"
 
 
+class AuthenticationLoop(AuthenticationError):
+    code = "AUTHENTICATION_LOOP"
+
+
 class SessionExpired(AuthenticationError):
     code = "SESSION_EXPIRED"
 
@@ -58,7 +62,9 @@ def public_error(exc: Exception) -> dict[str, object]:
         code, retryable = "TIMEOUT", True
     elif isinstance(exc, requests.HTTPError):
         status = exc.response.status_code if exc.response is not None else 0
-        code = {401: "SESSION_EXPIRED", 403: "ACCESS_DENIED", 429: "RATE_LIMITED"}.get(status, "SERVICE_UNAVAILABLE")
+        code = {401: "SESSION_EXPIRED", 403: "ACCESS_DENIED", 404: "NOT_FOUND", 429: "RATE_LIMITED"}.get(
+            status, "SERVICE_UNAVAILABLE" if status >= 500 else "HTTP_ERROR"
+        )
         retryable = status == 429 or status >= 500
     elif isinstance(exc, requests.RequestException):
         code, retryable = "NETWORK_ERROR", True

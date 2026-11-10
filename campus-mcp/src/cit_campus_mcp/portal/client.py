@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from ..config import PortalConfig
 from ..errors import SessionExpired, StructureChanged
 from ..session_store import session_lock
-from ..webforms import portal_page, soup_from_response
+from ..webforms import portal_page
 from .auth import PortalAuthenticator, PortalAuthResult
 
 
@@ -27,7 +27,7 @@ class PortalTopPage:
     soup: BeautifulSoup
     config: PortalConfig
 
-    def menu_post(self, menu_id: str, target_path: str = "/uprx/up/bs/bsa001/Bsa00101.xhtml") -> BeautifulSoup:
+    def menu_post(self, menu_id: str, target_path: str | None = None) -> BeautifulSoup:
         menu_form = self.soup.select_one("form#menuForm")
         if menu_form is None:
             raise PortalNavigationError("Portal menu form was not found. The session may have expired.")
@@ -44,13 +44,19 @@ class PortalTopPage:
             }
         )
         response = self.session.post(
-            urljoin(self.config.app_base.rstrip("/") + "/", target_path.lstrip("/")),
+            urljoin(
+                self.config.app_base.rstrip("/") + "/",
+                target_path or str(menu_form.get("action") or self.config.home_url),
+            ),
             data=data,
             timeout=self.config.timeout,
             allow_redirects=True,
         )
         response.raise_for_status()
-        return portal_page(response)
+        page = portal_page(response)
+        if page.select_one("form#menuForm"):
+            self.soup = page
+        return page
 
 
 class PortalClient:
@@ -69,19 +75,6 @@ class PortalClient:
     def _connect(self, force: bool = False) -> PortalTopPage:
         if self.auth is None or force:
             self.auth = self.authenticator.login(force=force)
-        else:
-            response = self.auth.session.get(
-                self.authenticator.config.home_url, timeout=self.authenticator.config.timeout
-            )
-            response.raise_for_status()
-            soup = soup_from_response(response)
-            if self.authenticator.is_authenticated(soup, response):
-                self.auth = PortalAuthResult(self.auth.session, response, soup, restored=True)
-            else:
-                self.auth.session.close()
-                self.auth = None
-                self.cache.clear()
-                self.auth = self.authenticator.login()
         return PortalTopPage(
             session=self.auth.session,
             soup=self.auth.soup,
@@ -98,7 +91,10 @@ class PortalClient:
                     return deepcopy(value)
             for attempt in range(2):
                 try:
-                    value = parser(self.connect())
+                    top = self.connect()
+                    value = parser(top)
+                    if self.auth is not None:
+                        self.auth.soup = top.soup
                     self.cache[key] = (self.clock(), deepcopy(value))
                     return value
                 except SessionExpired:
@@ -112,6 +108,8 @@ class PortalClient:
 
     def status(self) -> dict[str, object]:
         def read_status(top):
+            # Probe a read-only list; a local object alone does not prove remote validity.
+            top.menu_post("0_3_0_0")
             return {
                 "authenticated": True,
                 "restored_session": bool(self.auth and self.auth.restored),

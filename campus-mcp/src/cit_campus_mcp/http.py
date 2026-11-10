@@ -11,14 +11,19 @@ from urllib3.util.retry import Retry
 from .errors import AuthenticationError, ResponseTooLarge
 
 
+class ReadRetry(Retry):
+    def get_backoff_time(self) -> float:
+        return min(2.0, max(0.5, super().get_backoff_time())) if self.history else 0.0
+
+
 class SafeSession(requests.Session):
     def __init__(self, hosts: set[str]) -> None:
         super().__init__()
         self.hosts = hosts
         # GET only: no automatic replay of password, OTP, SAML or JSF POSTs.
-        retries = Retry(
+        retries = ReadRetry(
             total=1,
-            connect=1,
+            connect=0,
             read=0,
             status=1,
             backoff_factor=0.5,

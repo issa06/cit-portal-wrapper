@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 from ..config import PortalConfig, session_dir
 from ..credentials import Credentials, portal_credentials
-from ..errors import MFARequired
+from ..errors import AuthenticationLoop, MFARequired
 from ..http import SafeSession
 from ..session_store import CookieSessionStore, session_lock
 from ..totp import generate_totp
@@ -682,4 +682,4 @@ class PortalAuthenticator:
 
             raise AuthenticationError("Portal authentication requires additional interaction or has changed.")
 
-        raise AuthenticationError("Portal authentication exceeded the maximum number of steps.")
+        raise AuthenticationLoop("Portal authentication exceeded the maximum number of steps.")

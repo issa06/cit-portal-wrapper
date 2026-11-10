@@ -8,7 +8,6 @@ from urllib.parse import urldefrag, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
-from pypdf import PdfReader
 
 from ..config import DocumentsConfig
 from ..errors import StructureChanged
@@ -55,6 +54,8 @@ class DocumentsClient:
 
     @staticmethod
     def _pdf_text(content: bytes) -> str:
+        from pypdf import PdfReader
+
         reader = PdfReader(io.BytesIO(content))
         chunks = []
         for page in reader.pages:
