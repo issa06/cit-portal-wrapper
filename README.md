@@ -1,3 +1,5 @@
+> Mac/Codex向けのSSO・MFA対応MCP実装は [campus-mcp](campus-mcp/README.md) を参照してください。従来wrapperとは別パッケージです。実機検証範囲・移行手順はそちらに記載しています。
+
 # cit-portal-wrapper
 
 **cit-portal-wrapper**は、CITポータルのPythonラッパーです。

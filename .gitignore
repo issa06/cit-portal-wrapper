@@ -148,3 +148,5 @@ __pycache__/
 debug-*.html
 *.local.json
 !campus-mcp/tests/test_*.py
+
+!campus-mcp/uv.lock

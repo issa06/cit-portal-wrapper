@@ -2,10 +2,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-python3 -m venv .venv
+"${CIT_MCP_BOOTSTRAP_PYTHON:-python3.12}" -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e '.[dev]'
+# A normal install avoids macOS hidden .pth flags breaking editable imports.
+python -m pip install '.[dev]'
 echo
 echo 'Installed.'
 echo '1) .venv/bin/cit-campus-keyring'

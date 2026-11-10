@@ -51,6 +51,9 @@ def test_stdio_initialize_list_and_every_tool(tmp_path):
                     assert page.structured_content["next_offset"] is None
                     bad = await client.call_tool("portal_query", {"kind": "notices", "limit": 201})
                     assert bad.is_error
+                    assert bad.structured_content["error"]["code"] == "INVALID_TOOL_CALL"
+                    bad = await client.call_tool("portal_query", {"kind": "synthetic-private-argument"})
+                    assert bad.is_error and "synthetic-private-argument" not in bad.model_dump_json()
             errlog.seek(0)
             assert "Synthetic" not in errlog.read()
 

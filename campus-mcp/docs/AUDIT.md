@@ -23,3 +23,25 @@
 - MCP success types exist but no bounded pagination or stable error classification.
 
 Later phases and remaining unverified behavior are recorded in TEST_RESULTS.md and CHANGELOG.md.
+
+## Phase 2: stabilization
+
+Normal MFA/SAML login succeeded using existing Keychain entries without displaying values. An old cached UPRX probe returned HTTP 500 while the public entry was healthy. A bounded passwordless SSO rebuild distinguishes an expired app session from a service outage; it requests credentials only when the normal SSO flow explicitly does. Restarts subsequently restored SSO without password/TOTP submission. Session and complete JSF operations now have process/thread locks and private atomic cache writes.
+
+## Phase 3: feature work
+
+Live list-only navigation confirmed notices, grades and attendance. The existing attendance-shaped timetable parser failed against the actual grid. Structural diagnostics excluded academic values; the replacement weekly/intensive parser passed. Normal and full notice lists passed. No notice detail or state-changing operation was opened. Missing and unpublished data use explicit null/status/error classifications.
+
+## Phase 4: MCP and Codex
+
+MCP 2.3.0 real stdio initialize/list plus 13 synthetic tool responses passed. Live status, four Portal data queries and full notices passed with schema checks. Codex config gained one credential-free launcher block, preserving the existing server; rollback has a byte-roundtrip regression test. Two fresh subprocesses started from the actual configured launcher and returned authenticated/restored status. Desktop model-driven tool selection remains unverified until a new chat/app refresh.
+
+## Phase 5: quality
+
+Regression suite, ruff, locked dependencies, bounded outputs/retries/downloads, nonblocking cancellation and memory cache checks are recorded in TEST_RESULTS.md. The current-form reuse fix removed repeated SSO entry; PDF imports are lazy. Only synthetic fixtures are used in CI. Secret scanning findings were reviewed as test vectors/placeholders, with no production secret findings.
+
+## Phase 6: delivery
+
+New package 0.1.8 follows the verified 0.1.7 baseline because no earlier r1.8 source/tag was located. The new code is isolated under campus-mcp; the legacy package, original dirty checkout and feature-syllabus worktree remain preserved. Commits, pushed branch, scoped CI and the draft PR form the GitHub record. No merge, release publication, force push, remote server or tunnel is part of this delivery.
+
+The repository has Issues disabled. Issue creation was therefore unavailable; progress, test evidence and remaining work are consolidated in the draft PR instead of changing repository settings.
