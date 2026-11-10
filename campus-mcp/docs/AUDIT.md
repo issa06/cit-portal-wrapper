@@ -45,3 +45,7 @@ Regression suite, ruff, locked dependencies, bounded outputs/retries/downloads, 
 New package 0.1.8 follows the verified 0.1.7 baseline because no earlier r1.8 source/tag was located. The new code is isolated under campus-mcp; the legacy package, original dirty checkout and feature-syllabus worktree remain preserved. Commits, pushed branch, scoped CI and the draft PR form the GitHub record. No merge, release publication, force push, remote server or tunnel is part of this delivery.
 
 The repository has Issues disabled. Issue creation was therefore unavailable; progress, test evidence and remaining work are consolidated in the draft PR instead of changing repository settings.
+
+## Follow-up: already-read notice details and files
+
+Body, sender and attachment download were implemented with strict pre-selection read guards and independent before/after snapshots. Real stdio checks, private-file integrity/permissions, unread refusal and a final fresh list comparison passed. Details and limitations are in [NOTICE_DETAILS.md](NOTICE_DETAILS.md). The local synthetic suite now has 94 passing cases and 15 tools. Unread non-marking retrieval remains unsupported and is explicitly blocked; no notice was marked then reverted. Real academic content, filenames and attachments remain outside Git/CI.

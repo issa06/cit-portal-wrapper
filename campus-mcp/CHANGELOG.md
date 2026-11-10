@@ -2,6 +2,18 @@
 
 ## 0.1.8 — 2026-11-10
 
+### Notice detail follow-up (same unreleased draft PR)
+
+- Add `notice_ref` / `read_state` to summaries and two tools for already-read notice details and attachments (15 tools total).
+- Obtain body, sender and attachment references through observed JSF controls; never select unread/unknown records, mark/unmark, acknowledge, print or evaluate JavaScript.
+- Check independent before/after list snapshots, preserving duplicate multiplicity; withhold results on mismatch. Close disposable app views while retaining SSO.
+- Follow normal attachment preparation/callback conditions without executing scripts. Verify state before committing a private 0600 hash-named file outside the repository, max 8MiB/file and 200MiB total.
+- Match current view locators as well as metadata to avoid selecting ambiguous notices; preserve separately advertised dialog forms, scoped hidden values and ViewState.
+- Regression tests cover unread/unknown refusal before selection, stale/duplicate refs, callback errors, cancellation, schema/privacy, state drift and no file commit on failed verification.
+- Real stdio body/sender/attachment download, integrity/private permissions, unread refusal and final independent snapshot passed. Unread non-marking retrieval remains unsupported; see docs/NOTICE_DETAILS.md.
+
+### Initial stabilization
+
 - Preserve r1.7 Keychain, server-time-aware TOTP, SAML bridge and durable SSO restore.
 - Serialize JSF operations/authentication across threads/processes; reuse latest forms and HTTP sessions.
 - Recover failed UPRX restore probes through passwordless SSO before fresh credentials; retain caches on outages.

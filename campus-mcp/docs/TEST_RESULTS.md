@@ -1,6 +1,6 @@
 # Verification — 2026-11-10 JST
 
-Environment: macOS 26.6.2 arm64, Python 3.12.14, MCP SDK 2.3.0, pytest 9.2.0, ruff 0.17.4. Baseline r1.7: **22 PASS**. Final local synthetic suite: **72 PASS / 0 FAIL**. GitHub CI evidence is recorded in the PR; CI never receives university credentials or data.
+Environment: macOS 26.6.2 arm64, Python 3.12.14, MCP SDK 2.3.0, pytest 9.2.0, ruff 0.17.4. Baseline r1.7: **22 PASS**. Initial stabilization: **72 PASS**. With notice detail follow-up: **94 PASS / 0 FAIL**. GitHub CI evidence is recorded in the PR; CI never receives university credentials or data.
 
 ## Requested cases
 
@@ -10,8 +10,8 @@ PASS under Synthetic means a fixture/policy/protocol regression test passed. It 
 | --- | --- | --- | --- | --- |
 | 1 | Initial startup | PASS | PASS | Fresh wheel install; subprocess initialize |
 | 2 | MCP initialize | PASS | PASS | Official SDK client against stdio |
-| 3 | tools/list | PASS | PASS | 13 tools, descriptions and schemas |
-| 4 | Each tool normal response | PASS | PASS / NOT RUN | All 13 synthetic; live Portal status + 4 datasets + full notices. Other 7 tools NOT RUN live |
+| 3 | tools/list | PASS | PASS | 15 tools, descriptions and schemas |
+| 4 | Each tool normal response | PASS | PASS / NOT RUN | All 15 synthetic; live Portal status + 4 datasets + full notices + already-read detail/file. Other 7 tools NOT RUN live |
 | 5 | Unlogged state | PASS | NOT RUN | Missing credentials mapped to auth error; did not log the user out |
 | 6 | Normal login | PASS | PASS | Real credential + TOTP + SAML/UPRX flow succeeded |
 | 7 | MFA requested | PASS | PASS | Synthetic missing-seed MFA_REQUIRED; real configured MFA succeeded |
@@ -50,7 +50,7 @@ Static secret scan uses detect-secrets 1.5.0 with virtual environments, build ou
 
 ## Live feature status
 
-- Notices: summary/full lists PASS. Current record counts and contents intentionally omitted from this report. Detail body/sender/attachment references are not implemented; avoid triggering unread/receipt changes.
+- Notices: summary/full lists PASS. Already-read body/sender/attachment references and private file download PASS, with independent before/after snapshots matching. Unread/unknown selection is blocked before a detail request; unread non-marking retrieval is NOT IMPLEMENTED. See NOTICE_DETAILS.md. Current record counts, filenames and contents are intentionally omitted.
 - Timetable: weekly grids and intensive tables PASS. Explicit 前期/後期 labels observed. A date query is a weekday pattern, not a claim that a class occurs on a holiday or cancellation date. Automatic current-semester selection is not implemented.
 - Attendance: live records PASS; official aggregation equivalence NOT RUN. Missing/unknown-status behavior is tested synthetically.
 - Grades: live records PASS; unpublished behavior synthetic only. No GPA/earned-credit calculation or finality inference.
@@ -58,7 +58,7 @@ Static secret scan uses detect-secrets 1.5.0 with virtual environments, build ou
 
 ## Measured performance
 
-Single-run observations on this Mac, using the same stdio smoke sequence during this change. These are development measurements, not a controlled before/after benchmark of the untouched r1.7 release; network and filesystem cache conditions vary.
+Single-run observations from the initial stabilization phase, before the notice-detail follow-up. These are development measurements, not a controlled before/after benchmark of untouched r1.7 or a measurement of the new detail/download pipeline; network and filesystem cache conditions vary. Detail/download timings are recorded separately in NOTICE_DETAILS.md.
 
 | Measurement | Before connection/PDF-import fix | After |
 | --- | ---: | ---: |
@@ -77,6 +77,6 @@ Cause: unnecessary home probes were invalidating memory data caches and entering
 
 - Desktop UI/model tool selection after a new chat/app restart; the active chat's initial tool inventory cannot be hot-reloaded by this script.
 - Mac reboot, Intel hardware, other macOS/Python versions and real outage/rate-limit scenarios.
-- Real multi-page notice controls, detailed notices and read-receipt semantics, cancellation/makeup information, and official GPA rules.
+- Real multi-page notice controls, an officially supported non-marking route for unread notice details, server read timestamps/audit semantics, cancellation/makeup information, and official GPA rules.
 - Locate the reported earlier r1.8 artifact if available, compare its source before adopting any additional changes.
 - ChatGPT remote transport/authentication remains a separate future task; no tunnel or public deployment was performed.
