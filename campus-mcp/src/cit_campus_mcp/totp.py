@@ -44,5 +44,5 @@ def generate_totp(
     message = struct.pack(">Q", counter)
     digest = hmac.new(key, message, digestmod).digest()
     offset = digest[-1] & 0x0F
-    binary = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    binary = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
     return str(binary % (10**digits)).zfill(digits)

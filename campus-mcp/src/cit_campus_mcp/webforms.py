@@ -9,13 +9,11 @@ from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup, Tag, XMLParsedAsHTMLWarning
 
+from .errors import AuthenticationError, ServiceUnavailable, SessionExpired, StructureChanged
+
 USER_HINTS = ("user", "username", "userid", "login", "account", "email", "mail", "id")
 PASSWORD_HINTS = ("pass", "password", "passwd", "pwd")
 OTP_HINTS = ("otp", "totp", "mfa", "2fa", "code", "token", "verify", "verification", "authcode")
-
-
-class AuthenticationError(RuntimeError):
-    pass
 
 
 @dataclass(frozen=True)
@@ -43,6 +41,30 @@ def soup_from_response(response: requests.Response) -> BeautifulSoup:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", XMLParsedAsHTMLWarning)
         return BeautifulSoup(response.content, "lxml")
+
+
+def portal_page(response: requests.Response) -> BeautifulSoup:
+    """Decode both ordinary HTML and JSF partial-response CDATA, without executing JS."""
+    response.raise_for_status()
+    soup = soup_from_response(response)
+    if soup.find("partial-response"):
+        xml = BeautifulSoup(response.content, "xml")
+        if xml.find("redirect"):
+            raise SessionExpired("Portal requested a new navigation session.")
+        if xml.find("error"):
+            raise ServiceUnavailable("Portal returned a JSF error.")
+        updates = xml.find_all("update")
+        if not updates:
+            raise StructureChanged("JSF response contains no updates.")
+        markup = "".join(str(u.string or "") for u in updates if not str(u.get("id", "")).endswith("ViewState"))
+        soup = BeautifulSoup(markup, "lxml")
+        state = next((u.string for u in updates if str(u.get("id", "")).endswith("ViewState")), None)
+        if state:
+            for tag in soup.select('input[name="javax.faces.ViewState"]'):
+                tag["value"] = str(state)
+    if find_credential_form(soup, response.url) or find_otp_form(soup, response.url):
+        raise SessionExpired("Portal session expired.")
+    return soup
 
 
 def _name(input_tag: Tag) -> str | None:
@@ -134,9 +156,7 @@ def inspect_form(form: Tag, base_url: str) -> FormSpec:
         if input_type == "submit" and _name(tag):
             submit_fields.append(_name(tag) or "")
 
-    field_names = tuple(
-        name for tag in _input_candidates(form) if (name := _name(tag))
-    )
+    field_names = tuple(name for tag in _input_candidates(form) if (name := _name(tag)))
 
     return FormSpec(
         action=action,
@@ -264,8 +284,10 @@ def submit_form(
         data[submit_name] = ""
     parsed = urlparse(spec.action)
     if parsed.scheme and parsed.scheme != "https":
-        raise AuthenticationError(f"Refusing to submit credentials to non-HTTPS URL: {spec.action}")
+        raise AuthenticationError("Refusing to submit credentials to a non-HTTPS URL.")
     if spec.method == "get":
+        if spec.password_field or spec.otp_field:
+            raise AuthenticationError("Refusing to submit credentials in URL parameters.")
         return session.get(spec.action, params=data, timeout=timeout, allow_redirects=True)
     return session.post(spec.action, data=data, timeout=timeout, allow_redirects=True)
 

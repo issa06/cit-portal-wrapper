@@ -3,17 +3,19 @@ from __future__ import annotations
 import os
 import platform
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from getpass import getpass
+
+from .errors import AuthenticationError
 
 SERVICE = "cit-campus-mcp"
 
 
 @dataclass(frozen=True)
 class Credentials:
-    user_id: str
-    password: str
-    totp_secret: str | None = None
+    user_id: str = field(repr=False)
+    password: str = field(repr=False)
+    totp_secret: str | None = field(default=None, repr=False)
 
 
 def _security_get(account: str) -> str | None:
@@ -54,7 +56,7 @@ def _security_set(account: str, value: str) -> None:
 def _get(account: str, env_name: str) -> str | None:
     value = os.getenv(env_name)
     if value:
-        return value.strip()
+        return value if account.endswith("password") else value.strip()
     return _security_get(account)
 
 
@@ -67,29 +69,20 @@ def portal_credentials() -> Credentials:
         for name, value in (
             ("portal.user_id", user_id),
             ("portal.password", password),
-            ("portal.totp_secret", totp_secret),
         )
         if not value
     ]
     if missing:
-        raise RuntimeError(
-            "Missing Portal credentials: " + ", ".join(missing) + ". Run `cit-campus-keyring`."
-        )
+        raise AuthenticationError("Missing Portal credentials: " + ", ".join(missing) + ". Run `cit-campus-keyring`.")
     return Credentials(user_id=user_id or "", password=password or "", totp_secret=totp_secret)
 
 
 def manaba_credentials() -> Credentials:
     user_id = _get("manaba.user_id", "CIT_MANABA_USER_ID")
     password = _get("manaba.password", "CIT_MANABA_PASSWORD")
-    missing = [
-        name
-        for name, value in (("manaba.user_id", user_id), ("manaba.password", password))
-        if not value
-    ]
+    missing = [name for name, value in (("manaba.user_id", user_id), ("manaba.password", password)) if not value]
     if missing:
-        raise RuntimeError(
-            "Missing manaba credentials: " + ", ".join(missing) + ". Run `cit-campus-keyring`."
-        )
+        raise AuthenticationError("Missing manaba credentials: " + ", ".join(missing) + ". Run `cit-campus-keyring`.")
     return Credentials(user_id=user_id or "", password=password or "")
 
 

@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
+from threading import RLock
 from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
 
 from ..config import PortalConfig
-from .auth import PortalAuthResult, PortalAuthenticator
+from ..errors import SessionExpired, StructureChanged
+from ..session_store import session_lock
+from ..webforms import portal_page, soup_from_response
+from .auth import PortalAuthenticator, PortalAuthResult
 
 
-class PortalNavigationError(RuntimeError):
+class PortalNavigationError(StructureChanged):
     pass
 
 
@@ -43,27 +50,73 @@ class PortalTopPage:
             allow_redirects=True,
         )
         response.raise_for_status()
-        return BeautifulSoup(response.content, "xml")
+        return portal_page(response)
 
 
 class PortalClient:
     def __init__(self, authenticator: PortalAuthenticator | None = None) -> None:
         self.authenticator = authenticator or PortalAuthenticator()
         self.auth: PortalAuthResult | None = None
+        self.lock = RLock()
+        self.cache: dict[str, tuple[float, object]] = {}
+        self.cache_ttl = 30.0
+        self.clock = time.monotonic
 
     def connect(self, force: bool = False) -> PortalTopPage:
-        self.auth = self.authenticator.login(force=force)
+        with self.lock:
+            return self._connect(force)
+
+    def _connect(self, force: bool = False) -> PortalTopPage:
+        if self.auth is None or force:
+            self.auth = self.authenticator.login(force=force)
+        else:
+            response = self.auth.session.get(
+                self.authenticator.config.home_url, timeout=self.authenticator.config.timeout
+            )
+            response.raise_for_status()
+            soup = soup_from_response(response)
+            if self.authenticator.is_authenticated(soup, response):
+                self.auth = PortalAuthResult(self.auth.session, response, soup, restored=True)
+            else:
+                self.auth.session.close()
+                self.auth = None
+                self.cache.clear()
+                self.auth = self.authenticator.login()
         return PortalTopPage(
             session=self.auth.session,
             soup=self.auth.soup,
             config=self.authenticator.config,
         )
 
+    def run(self, key: str, parser: Callable[[PortalTopPage], object], *, refresh: bool = False) -> object:
+        # JSF ViewState and Session cookies are mutable. Serialize the whole operation,
+        # including parsing/pagination, both within this process and across MCP hosts.
+        with self.lock, session_lock(self.authenticator.store.path.with_name("portal-operation.lock")):
+            if not refresh and key in self.cache:
+                created, value = self.cache[key]
+                if self.clock() - created < self.cache_ttl:
+                    return deepcopy(value)
+            for attempt in range(2):
+                try:
+                    value = parser(self.connect())
+                    self.cache[key] = (self.clock(), deepcopy(value))
+                    return value
+                except SessionExpired:
+                    self.cache.clear()
+                    if self.auth is not None:
+                        self.auth.session.close()
+                    self.auth = None
+                    if attempt:
+                        raise
+            raise SessionExpired("Portal session could not be restored.")
+
     def status(self) -> dict[str, object]:
-        top = self.connect()
-        return {
-            "authenticated": True,
-            "restored_session": bool(self.auth and self.auth.restored),
-            "portal_host": self.auth.response.url.split("/", 3)[2] if self.auth else "",
-            "menu_form": bool(top.soup.select_one("form#menuForm")),
-        }
+        def read_status(top):
+            return {
+                "authenticated": True,
+                "restored_session": bool(self.auth and self.auth.restored),
+                "portal_host": self.auth.response.url.split("/", 3)[2] if self.auth else "",
+                "menu_form": bool(top.soup.select_one("form#menuForm")),
+            }
+
+        return self.run("status", read_status, refresh=True)

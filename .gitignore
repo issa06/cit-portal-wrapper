@@ -147,3 +147,4 @@ __pycache__/
 *cookie*.json
 debug-*.html
 *.local.json
+!campus-mcp/tests/test_*.py

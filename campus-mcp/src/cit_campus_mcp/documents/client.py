@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
 from ..config import DocumentsConfig
+from ..errors import StructureChanged
+from ..http import SafeSession
 
 
 @dataclass(frozen=True)
@@ -24,12 +26,13 @@ class DocumentRecord:
 class DocumentsClient:
     def __init__(self, config: DocumentsConfig | None = None) -> None:
         self.config = config or DocumentsConfig()
-        self.session = requests.Session()
+        self.session = SafeSession({urlparse(self.config.base_url).hostname})
         self.session.headers.update({"User-Agent": "CIT-Campus-MCP/0.1 read-only indexer"})
         self.allowed_host = urlparse(self.config.base_url).netloc
 
     def _allowed(self, url: str) -> bool:
-        return urlparse(url).netloc == self.allowed_host
+        parsed = urlparse(url)
+        return parsed.scheme == "https" and parsed.netloc == self.allowed_host and not parsed.username
 
     def _get(self, url: str) -> requests.Response:
         if not self._allowed(url):
@@ -84,17 +87,14 @@ class DocumentsClient:
             if url in seen or not self._allowed(url):
                 continue
             seen.add(url)
-            try:
-                response = self._get(url)
-            except requests.RequestException:
-                continue
+            response = self._get(url)
             content_type = response.headers.get("Content-Type", "").lower()
             is_pdf = "application/pdf" in content_type or response.url.lower().endswith(".pdf")
             if is_pdf:
                 try:
                     text = self._pdf_text(response.content)
                 except Exception:
-                    text = ""
+                    raise StructureChanged("Unable to extract document text.") from None
                 title = response.url.rsplit("/", 1)[-1]
                 links: list[tuple[str, str]] = []
                 kind = "pdf"
@@ -105,7 +105,7 @@ class DocumentsClient:
             haystack = (title + "\n" + text).lower()
             if all(word in haystack for word in words):
                 snippet_start = min((haystack.find(word) for word in words if word in haystack), default=0)
-                snippet = text[max(0, snippet_start - 200):snippet_start + 800].replace("\n", " ")
+                snippet = text[max(0, snippet_start - 200) : snippet_start + 800].replace("\n", " ")
                 matches.append(
                     {
                         "title": title or response.url.rsplit("/", 1)[-1],

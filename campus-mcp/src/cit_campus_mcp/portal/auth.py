@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
-import logging
 import time
 from dataclasses import dataclass
 from datetime import timezone
 from email.utils import parsedate_to_datetime
+from threading import RLock
 from typing import Callable
 from urllib.parse import urlparse
 
@@ -14,11 +13,12 @@ from bs4 import BeautifulSoup
 
 from ..config import PortalConfig, session_dir
 from ..credentials import Credentials, portal_credentials
-from ..session_store import CookieSessionStore
+from ..errors import MFARequired
+from ..http import SafeSession
+from ..session_store import CookieSessionStore, session_lock
 from ..totp import generate_totp
 from ..webforms import (
     AuthenticationError,
-    auth_error_text,
     find_auto_post_form,
     find_client_redirect,
     find_credential_form,
@@ -26,13 +26,10 @@ from ..webforms import (
     find_otp_credentials,
     find_otp_form,
     find_sso_entry_url,
-    sanitized_form_summary,
     select_otp_credential_id,
     soup_from_response,
     submit_form,
 )
-
-logger = logging.getLogger(__name__)
 
 TRANSIENT_SSO_COOKIE_NAMES = {
     "AUTH_SESSION_ID",
@@ -83,9 +80,12 @@ class PortalAuthenticator:
         self.store = CookieSessionStore(session_dir() / "portal-session.json")
         self.last_response: requests.Response | None = None
         self.trace: list[dict[str, object]] = []
+        self._lock = RLock()
 
     def new_session(self) -> requests.Session:
-        session = requests.Session()
+        session = SafeSession(
+            {urlparse(self.config.app_base).hostname, urlparse(self.config.entry_url).hostname, "sso.chibatech.ac.jp"}
+        )
         session.headers.update(DEFAULT_HEADERS)
         return session
 
@@ -172,7 +172,7 @@ class PortalAuthenticator:
     def _https_get(session: requests.Session, url: str, timeout: int) -> requests.Response:
         parsed = urlparse(url)
         if parsed.scheme and parsed.scheme != "https":
-            raise AuthenticationError(f"Refusing authentication redirect to non-HTTPS URL: {url}")
+            raise AuthenticationError("Refusing authentication redirect to non-HTTPS URL.")
         return session.get(url, timeout=timeout, allow_redirects=True)
 
     def _restore_candidate_urls(self) -> list[str]:
@@ -182,19 +182,12 @@ class PortalAuthenticator:
         last_url = self.store.metadata.get("last_authenticated_url")
         if isinstance(last_url, str):
             parsed = urlparse(last_url)
-            if (
-                parsed.scheme == "https"
-                and parsed.netloc == portal_host
-                and parsed.path.startswith("/uprx/")
-            ):
+            if parsed.scheme == "https" and parsed.netloc == portal_host and parsed.path.startswith("/uprx/"):
                 candidates.append(last_url)
 
         # Compatibility with r1.2-r1.4 caches. Pky00102.xhtml is the post-SAML
         # bridge URL, but the actual authenticated application home is Bsa00101.
-        candidates.append(
-            self.config.app_base.rstrip("/")
-            + "/uprx/up/pk/pky001/Pky00102.xhtml"
-        )
+        candidates.append(self.config.app_base.rstrip("/") + "/uprx/up/pk/pky001/Pky00102.xhtml")
         candidates.append(self.config.top_url)
         return list(dict.fromkeys(candidates))
 
@@ -202,7 +195,7 @@ class PortalAuthenticator:
         self.store.save(
             session,
             metadata={
-                "last_authenticated_url": response.url,
+                "last_authenticated_url": self.config.home_url,
                 "canonical_home_url": self.config.home_url,
             },
         )
@@ -212,7 +205,24 @@ class PortalAuthenticator:
             "phase": "restore",
             "action": action,
         }
-        entry.update(extra)
+        entry.update(
+            {
+                k: v
+                for k, v in extra.items()
+                if k
+                in {
+                    "step",
+                    "authenticated",
+                    "has_sso_entry",
+                    "has_credentials",
+                    "has_otp",
+                    "has_auto_post",
+                    "has_login_form",
+                    "cookie_count",
+                    "error",
+                }
+            }
+        )
         self.trace.append(entry)
 
     @staticmethod
@@ -229,7 +239,6 @@ class PortalAuthenticator:
                 }
             )
         return inventory
-
 
     def _clear_transient_sso_cookies(self, session: requests.Session) -> list[str]:
         """Remove Keycloak cookies that belong to a completed authentication transaction.
@@ -268,7 +277,7 @@ class PortalAuthenticator:
             )
         except requests.RequestException as exc:
             self._record_restore("sso-resume-request-error", error=exc.__class__.__name__)
-            return None
+            raise
 
         soup = soup_from_response(response)
         followed_sso_entry = False
@@ -293,9 +302,7 @@ class PortalAuthenticator:
             if self.is_authenticated(soup, response):
                 self._record_restore("restored-via-sso-session", response_path=parsed.path)
                 self._save_session(session, response)
-                return PortalAuthResult(
-                    session=session, response=response, soup=soup, restored=True
-                )
+                return PortalAuthResult(session=session, response=response, soup=soup, restored=True)
 
             sso_entry = find_sso_entry_url(soup, response.url)
             if sso_entry and not followed_sso_entry:
@@ -305,7 +312,7 @@ class PortalAuthenticator:
                     response = self._https_get(session, sso_entry, self.config.timeout)
                 except requests.RequestException as exc:
                     self._record_restore("sso-resume-request-error", error=exc.__class__.__name__)
-                    return None
+                    raise
                 soup = soup_from_response(response)
                 continue
 
@@ -317,11 +324,7 @@ class PortalAuthenticator:
                 self._record_restore("sso-resume-requires-otp")
                 return None
 
-            if (
-                parsed.netloc == portal_host
-                and parsed.path.endswith("/Pky00102.xhtml")
-                and not portal_bridge_submitted
-            ):
+            if parsed.netloc == portal_host and parsed.path.endswith("/Pky00102.xhtml") and not portal_bridge_submitted:
                 bridge_form = find_form_by_id(soup, response.url, "loginForm")
                 if (
                     bridge_form is not None
@@ -349,7 +352,7 @@ class PortalAuthenticator:
                     response = self._https_get(session, redirect, self.config.timeout)
                 except requests.RequestException as exc:
                     self._record_restore("sso-resume-request-error", error=exc.__class__.__name__)
-                    return None
+                    raise
                 soup = soup_from_response(response)
                 continue
 
@@ -374,9 +377,7 @@ class PortalAuthenticator:
 
         for candidate in self._restore_candidate_urls():
             try:
-                response = session.get(
-                    candidate, timeout=self.config.timeout, allow_redirects=True
-                )
+                response = session.get(candidate, timeout=self.config.timeout, allow_redirects=True)
                 soup = soup_from_response(response)
                 self.last_response = response
                 parsed = urlparse(response.url)
@@ -395,9 +396,7 @@ class PortalAuthenticator:
                 if self.is_authenticated(soup, response):
                     self._record_restore("restored-from-cookie-cache", response_path=parsed.path)
                     self._save_session(session, response)
-                    return PortalAuthResult(
-                        session=session, response=response, soup=soup, restored=True
-                    )
+                    return PortalAuthResult(session=session, response=response, soup=soup, restored=True)
 
                 # The post-SAML bridge may still be returned when a valid cached
                 # UPRX session exists. Replay only its hidden-only loginForm once;
@@ -416,9 +415,7 @@ class PortalAuthenticator:
                         and bridge_form.otp_field is None
                     ):
                         self._record_restore("submit-uprx-bridge-loginForm")
-                        bridge_response = submit_form(
-                            session, bridge_form, {}, self.config.timeout
-                        )
+                        bridge_response = submit_form(session, bridge_form, {}, self.config.timeout)
                         bridge_soup = soup_from_response(bridge_response)
                         self.last_response = bridge_response
                         bridge_parsed = urlparse(bridge_response.url)
@@ -462,13 +459,20 @@ class PortalAuthenticator:
                                 soup=home_soup,
                                 restored=True,
                             )
+            except requests.HTTPError as exc:
+                # Expired UPRX sessions can respond 500 while the upstream SSO is
+                # healthy. One passwordless SSO rebuild is safe; never resend
+                # credentials merely because a service returned an error.
+                if exc.response is not None and exc.response.status_code >= 500:
+                    resumed = self._try_sso_resume(session)
+                    if resumed is not None:
+                        return resumed
+                    if self.trace[-1].get("action") in {"sso-resume-requires-credentials", "sso-resume-requires-otp"}:
+                        return None
+                raise
             except requests.RequestException as exc:
-                self._record_restore(
-                    "probe-request-error",
-                    requested_path=urlparse(candidate).path,
-                    error=exc.__class__.__name__,
-                )
-                continue
+                self._record_restore("probe-request-error", error=exc.__class__.__name__)
+                raise
 
         # Direct UPRX cookie restoration can fail even while the upstream
         # Keycloak SSO login is still alive. Before discarding the cache, try a
@@ -483,18 +487,13 @@ class PortalAuthenticator:
         return None
 
     def _record(self, step: int, response: requests.Response, soup: BeautifulSoup) -> None:
-        parsed = urlparse(response.url)
         self.last_response = response
         self.trace.append(
             {
                 "step": step,
-                "host": parsed.netloc,
-                "path": parsed.path,
                 "authenticated": self.is_authenticated(soup, response),
-                "has_sso_entry": bool(find_sso_entry_url(soup, response.url)),
                 "has_credentials": bool(find_credential_form(soup, response.url)),
                 "has_otp": bool(find_otp_form(soup, response.url)),
-                "has_auto_post": bool(find_auto_post_form(soup, response.url)),
             }
         )
 
@@ -503,9 +502,22 @@ class PortalAuthenticator:
             self.trace[-1]["action"] = value
 
     def login(self, force: bool = False) -> PortalAuthResult:
+        with self._lock, session_lock(self.store.path.with_suffix(".lock")):
+            self._attempt_session = None
+            try:
+                return self._login(force)
+            except BaseException:
+                if self._attempt_session is not None:
+                    getattr(self._attempt_session, "close", lambda: None)()
+                raise
+            finally:
+                self._attempt_session = None
+
+    def _login(self, force: bool = False) -> PortalAuthResult:
         self.trace = []
         self.last_response = None
         session = self.new_session()
+        self._attempt_session = session
         if not force:
             restored = self._try_restore(session)
             if restored:
@@ -524,7 +536,6 @@ class PortalAuthenticator:
 
         for step in range(self.config.max_auth_steps):
             self._record(step + 1, response, soup)
-            logger.debug("Portal auth step=%d url=%s", step + 1, response.url)
 
             if self.is_authenticated(soup, response):
                 self._save_session(session, response)
@@ -543,8 +554,7 @@ class PortalAuthenticator:
             credential_form = find_credential_form(soup, response.url)
             if credential_form:
                 if credential_submitted:
-                    message = auth_error_text(soup) or "The SSO credential form was returned after submission."
-                    raise AuthenticationError(f"Portal SSO credential authentication failed: {message}")
+                    raise AuthenticationError("Portal SSO rejected the credential submission.")
                 user_field = self.config.user_field or credential_form.user_field
                 password_field = self.config.password_field or credential_form.password_field
                 if not user_field or not password_field:
@@ -553,13 +563,8 @@ class PortalAuthenticator:
                     user_field: creds.user_id,
                     password_field: creds.password,
                 }
-                if (
-                    self.config.remember_me_field
-                    and self.config.remember_me_field in credential_form.field_names
-                ):
-                    credential_values[self.config.remember_me_field] = (
-                        self.config.remember_me_value
-                    )
+                if self.config.remember_me_field and self.config.remember_me_field in credential_form.field_names:
+                    credential_values[self.config.remember_me_field] = self.config.remember_me_value
 
                 self._action("submit-sso-credentials")
                 if self.trace and self.config.remember_me_field in credential_values:
@@ -579,10 +584,9 @@ class PortalAuthenticator:
             if otp_form:
                 max_attempts = max(1, self.config.totp_max_attempts)
                 if otp_attempts >= max_attempts:
-                    message = auth_error_text(soup) or "The OTP form was returned after submission."
-                    raise AuthenticationError(f"Portal OTP authentication failed: {message}")
+                    raise AuthenticationError("Portal rejected the bounded TOTP attempts.")
                 if not creds.totp_secret:
-                    raise AuthenticationError("Portal requested MFA but no TOTP secret is configured.")
+                    raise MFARequired("Portal requested MFA; configure a TOTP credential in Keychain.")
                 otp_field = self.config.otp_field or otp_form.otp_field
                 if not otp_field:
                     raise AuthenticationError("Could not determine Portal OTP field name.")
@@ -601,12 +605,7 @@ class PortalAuthenticator:
                     if credential_id:
                         values[selected_field] = credential_id
                     elif len(otp_credentials) > 1:
-                        labels = ", ".join(c.label or "(unnamed)" for c in otp_credentials)
-                        raise AuthenticationError(
-                            "Portal exposes multiple OTP credentials, but the configured label "
-                            f"{self.config.totp_credential_label!r} was not found. Available labels: {labels}. "
-                            "Set CIT_PORTAL_TOTP_CREDENTIAL_LABEL to the credential paired with your TOTP secret."
-                        )
+                        raise MFARequired("Configured TOTP credential label was not found; check Keychain setup.")
 
                 self._action("retry-totp-next-window" if retrying else "submit-totp")
                 if self.trace:
@@ -619,10 +618,6 @@ class PortalAuthenticator:
                             "totp_waited_seconds": round(timing.waited_seconds, 3),
                         }
                     )
-                    if retrying:
-                        previous_error = auth_error_text(soup)
-                        if previous_error:
-                            self.trace[-1]["otp_retry_reason"] = previous_error
 
                 otp_attempts += 1
                 last_otp_counter = counter
@@ -646,35 +641,22 @@ class PortalAuthenticator:
             # only loginForm once if the bridge still needs a JSF postback.
             if credential_submitted and otp_attempts > 0 and is_portal_uprx and parsed.path.endswith("/Pky00102.xhtml"):
                 self._action("probe-uprx-top-after-saml")
-                portal_response = session.get(
-                    self.config.top_url, timeout=self.config.timeout, allow_redirects=True
-                )
+                portal_response = session.get(self.config.top_url, timeout=self.config.timeout, allow_redirects=True)
                 portal_soup = soup_from_response(portal_response)
                 if self.is_authenticated(portal_soup, portal_response):
                     self._save_session(session, portal_response)
-                    return PortalAuthResult(
-                        session=session, response=portal_response, soup=portal_soup
-                    )
+                    return PortalAuthResult(session=session, response=portal_response, soup=portal_soup)
 
                 if not portal_bridge_submitted:
                     bridge_form = find_form_by_id(soup, response.url, "loginForm")
                     if bridge_form is not None:
                         self._action("submit-uprx-bridge-loginForm")
                         portal_bridge_submitted = True
-                        response = submit_form(
-                            session, bridge_form, {}, self.config.timeout
-                        )
+                        response = submit_form(session, bridge_form, {}, self.config.timeout)
                         soup = soup_from_response(response)
                         continue
 
-                details = sanitized_form_summary(soup, response.url)
-                raise AuthenticationError(
-                    "Portal SSO reached the UPRX bridge page, but the authenticated "
-                    "menu page was not established after one loginForm postback at "
-                    f"{parsed.netloc}{parsed.path}; forms="
-                    f"{json.dumps(details, ensure_ascii=False)}. "
-                    "Run again with --debug-html debug-portal.html for local inspection."
-                )
+                raise AuthenticationError("Portal SSO bridge did not establish an authenticated menu.")
 
             auto_post = find_auto_post_form(soup, response.url)
             if auto_post:
@@ -698,16 +680,6 @@ class PortalAuthenticator:
                     self._save_session(session, portal_response)
                     return PortalAuthResult(session=session, response=portal_response, soup=portal_soup)
 
-            details = sanitized_form_summary(soup, response.url)
-            logger.error("Portal auth stopped at %s; forms=%s", response.url, json.dumps(details, ensure_ascii=False))
-            raise AuthenticationError(
-                "Portal authentication stopped on an unrecognized page. "
-                "Run `cit-campus-login-test portal --force --debug-html debug-portal.html` for local inspection."
-            )
+            raise AuthenticationError("Portal authentication requires additional interaction or has changed.")
 
-        details = sanitized_form_summary(soup, response.url)
-        raise AuthenticationError(
-            "Portal authentication exceeded the maximum number of steps at "
-            f"{urlparse(response.url).netloc}{urlparse(response.url).path}; forms="
-            f"{json.dumps(details, ensure_ascii=False)}"
-        )
+        raise AuthenticationError("Portal authentication exceeded the maximum number of steps.")

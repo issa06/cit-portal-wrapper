@@ -4,11 +4,11 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
-import requests
 from bs4 import BeautifulSoup
 
 from ..config import ManabaConfig, session_dir
 from ..credentials import manaba_credentials
+from ..http import SafeSession
 from ..session_store import CookieSessionStore
 from ..webforms import find_credential_form, soup_from_response, submit_form
 
@@ -31,7 +31,7 @@ class ManabaCourse:
 class ManabaClient:
     def __init__(self, config: ManabaConfig | None = None) -> None:
         self.config = config or ManabaConfig()
-        self.session = requests.Session()
+        self.session = SafeSession({urlparse(self.config.base_url).hostname})
         self.session.headers.update(DEFAULT_HEADERS)
         self.store = CookieSessionStore(session_dir() / "manaba-session.json")
         self.connected = False
@@ -84,7 +84,11 @@ class ManabaClient:
 
     def get_soup(self, path_or_url: str) -> BeautifulSoup:
         self.connect()
-        url = path_or_url if path_or_url.startswith("https://") else urljoin(self.config.base_url.rstrip("/") + "/", path_or_url.lstrip("/"))
+        url = (
+            path_or_url
+            if path_or_url.startswith("https://")
+            else urljoin(self.config.base_url.rstrip("/") + "/", path_or_url.lstrip("/"))
+        )
         parsed = urlparse(url)
         if parsed.netloc != urlparse(self.config.base_url).netloc:
             raise ValueError("Refusing to fetch a URL outside the configured manaba host.")
