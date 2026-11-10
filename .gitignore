@@ -150,3 +150,4 @@ debug-*.html
 !campus-mcp/tests/test_*.py
 
 !campus-mcp/uv.lock
+!campus-mcp/docs/TEST_RESULTS.md
