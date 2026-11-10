@@ -134,3 +134,20 @@ testdir
 *.json
 
 test_*
+
+# Campus MCP: local credentials, private portal responses and build outputs
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+*session*.json
+*cookie*.json
+debug-*.html
+*.local.json
+!campus-mcp/tests/test_*.py
+
+!campus-mcp/uv.lock
+!campus-mcp/docs/TEST_RESULTS.md
